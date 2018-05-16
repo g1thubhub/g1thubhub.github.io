@@ -21,6 +21,9 @@ java -cp target/top-modules-1.0-SNAPSHOT.jar spark.apis.wordcount.Java_DataSet
 ```
 
 ### PySpark Setup
+Python is not a JVM-based language and the Python scripts that are included in the repo are actually completely independent from the Maven project and its dependencies. In order to run the Python examples, you need to install _pyspark_ which I did on MacOS via
+```pip3 install pyspark```.
+The scripts can be run from an IDE or from the terminal via  ```python3 python_dataframe.py```
 
 
 ### Implementation
@@ -31,7 +34,7 @@ Each Spark program will implement the same simple _Word Count_ logic:
 3.	Count how often each element occurs
 4.	Create an output file that contains the element and its occurrence frequency
 
-The solutions for the various combinations can be found here:
+The solutions for the various combinations using the most recent version of Spark (2.3) can be found here:
 * [Scala + RDD](https://github.com/g1thubhub/bdrecipes/blob/master/src/main/java/spark/apis/wordcount/Scala_RDD.scala)
 * [Scala + DataFrame](https://github.com/g1thubhub/bdrecipes/blob/master/src/main/java/spark/apis/wordcount/Scala_DataFrame.scala)
 * [Scala + DataSet](https://github.com/g1thubhub/bdrecipes/blob/master/src/main/java/spark/apis/wordcount/Scala_DataSet.scala)
