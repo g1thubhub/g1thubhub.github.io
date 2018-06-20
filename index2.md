@@ -21,3 +21,5 @@ This is a normal paragraph following a header. GitHub is a code hosting platform
 # Header 2
 
 Continued...
+
+![Mem1](images/Mem1.png)
