@@ -24,7 +24,7 @@ Before providing actual speed and space measurement results in the third section
 The green, yellow or red background colours in the table cells will indicate how "good" the time complexity of a particular data structure/operation combination is relative to the other combinations. 
 <br/><br/>
 Table 1
-{% include 1.html %}
+![Table 1](images/1.png) 
 
 
 The first five entries of Table 1 are **linear** data structures: They have a linear ordering and can only be traversed in one way. By contrast, **Trees** can be traversed in different ways, they consist of hierarchically linked data items that each have a single parent except for the root item. Trees can also be classified as connected **graphs** without cycles; a data item (= _node_ or _vertex_) can be connected to more than two other items in a graph. 
