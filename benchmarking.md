@@ -4,14 +4,13 @@ layout: default
 
 # Benchmarks, Spark and Graal
 <p></p>
-A very important question is how long something takes and the answer to that is fairly straightforward: Check the current time, then perform the unit of work that should be measured, then stop the time. The stop time minus the start time would equal the amount of time the task took, the elapsed time. Translated in which is used by the frameworks mentioned below:
-computation
+A very important question is how long something takes and the answer to that is fairly straightforward in normal life: Check the current time, then perform the unit of work that should be measured, then check the time again. The end time minus the start time would equal the amount of time that the task took, the **elapsed time** or wallclock time. The programmatic version of this simple measuring technique could look like
 
 {% include Measure.html %}
 
-In the case of Apache Spark, the _computation_ would likely be of type `Dataset[_]` or `RDD[_]`. In fact, the two third party benchmarking frameworks for Spark mentioned below use a function similar to the one shown above for measuring the execution time of a Job in Spark.  
-
-Hard to do this in a reliable way especially numerous non-deterministic factors and especially when an adaptive virtual machine like JVM that applies dynamic optimizations. Even the usage of a dedicated microbenchmarking framework like JMH that I did below is , the user is reminded every time of that when JMH completes:
+In the case of Apache Spark, the _computation_ would likely be of type `Dataset[_]` or `RDD[_]`. In fact, the two third party benchmarking frameworks for Spark mentioned below are based on a function similar to the one shown above for measuring the execution time of a Spark job.  
+<br>
+It is surprisingly hard to accurately predict how long something will take in programming: The result from a single invocation of the naive method above is likely not very reliable since numerous non-deterministic factors can interfere with a measurement, especially when the underlying runtime applies dynamic optimizations like the Java Virtual Machine. Even the usage of a dedicated microbenchmarking framework like JMH only solves parts of the problem --  the user is reminded every time of that caveat after JMH completes:
 ```
 [info] REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
 [info] why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
@@ -20,12 +19,9 @@ Hard to do this in a reliable way especially numerous non-deterministic factors 
 [info] Do not assume the numbers tell you what you want them to tell.
 ```
 
-real life noisy, platform optimizations
-repeatedly outliers, control optimizations
-A simple computational 
-<br><br>
+
 ## From the Apache Spark creators: _spark-sql-perf_
-If benchmarking a computation on a local machine is already hard, then doing this for a distributed computation/environment should be very hard. [_spark-sql-perf_](https://github.com/databricks/spark-sql-perf) is the official performance testing framework for Spark 2. The following twelve benchmarks that are organized into three classes are particularly interesting since they target various features and APIs of Spark:
+If benchmarking a computation on a local machine is already hard, then doing this for a distributed computation/environment should be very hard. [_spark-sql-perf_](https://github.com/databricks/spark-sql-perf) is the official performance testing framework for Spark 2. The following twelve benchmarks are particularly interesting since they target various features and APIs of Spark; they are organized into three classes :
 
 <br>
 [DatasetPerformance](https://github.com/g1thubhub/spark-sql-perf/blob/Fix_3_local_benchmark_classes/src/main/scala/com/databricks/spark/sql/perf/DatasetPerformance.scala) compares the same workloads expressed via RDD, Dataframe and Dataset API:
@@ -51,7 +47,7 @@ The next two aggregation benchmarks use the three data sets that are also used i
 <br> 
 <br>
 
-Running these benchmarks produces....... almost nothing, in the current state of the official master branch most of them are broken or will crash due to various problems (issues with reflection, missing table registrations, wrong UDF pattern, ...):
+Running these benchmarks produces....... almost nothing, most of them are broken or will crash in the current state of the official _master_ branch due to various problems (issues with reflection, missing table registrations, wrong UDF pattern, ...):
 ```shell
 $ bin/run --benchmark AggregationPerformance
 [...]
