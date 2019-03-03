@@ -1,0 +1,1055 @@
+<?xml version="1.0" standalone="no"?>
+<svg version="1.1" width="1200" height="774" onload="init(evt)" viewBox="0 0 1200 774" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs >
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	.func_g:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	var details, searchbtn, matchedtxt, svg;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+	}
+	// mouse-over for info
+	function s(node) {		// show
+		info = g_to_text(node);
+		details.nodeValue = "Function: " + info;
+	}
+	function c() {			// clear
+		details.nodeValue = ' ';
+	}
+	// ctrl-F for search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+	})
+	// functions
+	function find_child(parent, name, attr) {
+		var children = parent.childNodes;
+		for (var i=0; i<children.length;i++) {
+			if (children[i].tagName == name)
+				return (attr != undefined) ? children[i].attributes[attr].value : children[i];
+		}
+		return;
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_"+attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_"+attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_"+attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes["width"].value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes["x"].value = parseFloat(r.attributes["x"].value) +3;
+		// Smaller than this size won't fit anything
+		if (w < 2*12*0.59) {
+			t.textContent = "";
+			return;
+		}
+		t.textContent = txt;
+		// Fit in full text width
+		if (/^ *$/.test(txt) || t.getSubStringLength(0, txt.length) < w)
+			return;
+		for (var x=txt.length-2; x>0; x--) {
+			if (t.getSubStringLength(0, x+2) <= w) {
+				t.textContent = txt.substring(0,x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = (parseFloat(e.attributes["x"].value) - x - 10) * ratio + 10;
+				if(e.tagName == "text") e.attributes["x"].value = find_child(e.parentNode, "rect", "x") + 3;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseFloat(e.attributes["width"].value) * ratio;
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_child(c[i], x-10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = 10;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseInt(svg.width.baseVal.value) - (10*2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr["width"].value);
+		var xmin = parseFloat(attr["x"].value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr["y"].value);
+		var ratio = (svg.width.baseVal.value - 2*10) / width;
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "1.0";
+		var el = document.getElementsByTagName("g");
+		for(var i=0;i<el.length;i++){
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a["x"].value);
+			var ew = parseFloat(a["width"].value);
+			// Is it an ancestor
+			if (0 == 0) {
+				var upstack = parseFloat(a["y"].value) > ymin;
+			} else {
+				var upstack = parseFloat(a["y"].value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.style["opacity"] = "0.5";
+					zoom_parent(e);
+					e.onclick = function(e){unzoom(); zoom(this);};
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.style["display"] = "none";
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.style["display"] = "none";
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					e.onclick = function(e){zoom(this);};
+					update_text(e);
+				}
+			}
+		}
+	}
+	function unzoom() {
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "0.0";
+		var el = document.getElementsByTagName("g");
+		for(i=0;i<el.length;i++) {
+			el[i].style["display"] = "block";
+			el[i].style["opacity"] = "1";
+			zoom_reset(el[i]);
+			update_text(el[i]);
+		}
+	}
+	// search
+	function reset_search() {
+		var el = document.getElementsByTagName("rect");
+		for (var i=0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)", "");
+			if (term != null) {
+				search(term)
+			}
+		} else {
+			reset_search();
+			searching = 0;
+			searchbtn.style["opacity"] = "0.1";
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.style["opacity"] = "0.0";
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		var re = new RegExp(term);
+		var el = document.getElementsByTagName("g");
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			if (e.attributes["class"].value != "func_g")
+				continue;
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (rect == null) {
+				// the rect might be wrapped in an anchor
+				// if nameattr href is being used
+				if (rect = find_child(e, "a")) {
+				    rect = find_child(r, "rect");
+				}
+			}
+			if (func == null || rect == null)
+				continue;
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes["width"].value);
+			if (w > maxwidth)
+				maxwidth = w;
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes["x"].value);
+				orig_save(rect, "fill");
+				rect.attributes["fill"].value =
+				    "rgb(230,0,230)";
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		searchbtn.style["opacity"] = "1.0";
+		searchbtn.firstChild.nodeValue = "Reset Search"
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.style["opacity"] = "1.0";
+		pct = 100 * count / maxwidth;
+		if (pct == 100)
+			pct = "100"
+		else
+			pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+	function searchover(e) {
+		searchbtn.style["opacity"] = "1.0";
+	}
+	function searchout(e) {
+		if (searching) {
+			searchbtn.style["opacity"] = "1.0";
+		} else {
+			searchbtn.style["opacity"] = "0.1";
+		}
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="774.0" fill="url(#background)"  />
+<text text-anchor="middle" x="600.00" y="24" font-size="17" font-family="Verdana" fill="rgb(0,0,0)"  >Fatso Flame Graph</text>
+<text text-anchor="" x="10.00" y="757" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="details" > </text>
+<text text-anchor="" x="10.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="unzoom" onclick="unzoom()" style="opacity:0.0;cursor:pointer" >Reset Zoom</text>
+<text text-anchor="" x="1090.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="search" onmouseover="searchover()" onmouseout="searchout()" onclick="search_prompt()" style="opacity:0.1;cursor:pointer" >Search</text>
+<text text-anchor="" x="1090.00" y="757" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="matched" > </text>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.thread.QueuedThreadPool.idleJobPoll (20,196 samples, 6.81%)</title><rect x="681.2" y="661" width="80.3" height="15.0" fill="rgb(206,17,7)" rx="2" ry="2" />
+<text text-anchor="" x="684.21" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>scala.concurrent.impl.Promise$DefaultPromise.ready (6,702 samples, 2.26%)</title><rect x="1002.7" y="133" width="26.6" height="15.0" fill="rgb(213,13,15)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (20,193 samples, 6.81%)</title><rect x="681.2" y="597" width="80.3" height="15.0" fill="rgb(247,167,26)" rx="2" ry="2" />
+<text text-anchor="" x="684.21" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.misc...</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.server.ServerConnector.accept (6,732 samples, 2.27%)</title><rect x="868.6" y="645" width="26.8" height="15.0" fill="rgb(245,8,25)" rx="2" ry="2" />
+<text text-anchor="" x="871.63" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.Dataset$$anonfun$collect$1.apply (6,705 samples, 2.26%)</title><rect x="1002.7" y="389" width="26.6" height="15.0" fill="rgb(232,189,38)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.LinkedBlockingQueue.take (26,888 samples, 9.06%)</title><rect x="1029.5" y="581" width="106.9" height="15.0" fill="rgb(219,96,20)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.AsyncEventQueue.org$apache$spark$scheduler$AsyncEventQueue$$dispatch (26,898 samples, 9.07%)</title><rect x="1029.5" y="661" width="106.9" height="15.0" fill="rgb(250,96,21)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.sp..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.catalyst.expressions.GeneratedClass$GeneratedIteratorForCodegenStage1.processNext (20,055 samples, 6.76%)</title><rect x="521.1" y="437" width="79.7" height="15.0" fill="rgb(242,163,10)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos (26,912 samples, 9.07%)</title><rect x="197.2" y="613" width="107.0" height="15.0" fill="rgb(222,205,52)" rx="2" ry="2" />
+<text text-anchor="" x="200.20" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.thread.QueuedThreadPool.runJob (33,660 samples, 11.35%)</title><rect x="761.5" y="677" width="133.9" height="15.0" fill="rgb(230,126,31)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_projec..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.hashCode (420 samples, 0.14%)</title><rect x="555.7" y="277" width="1.7" height="15.0" fill="rgb(214,175,23)" rx="2" ry="2" />
+<text text-anchor="" x="558.75" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.Dataset$$anonfun$collect$1.apply (6,705 samples, 2.26%)</title><rect x="1002.7" y="373" width="26.6" height="15.0" fill="rgb(247,59,10)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDD.collect (6,702 samples, 2.26%)</title><rect x="1002.7" y="325" width="26.6" height="15.0" fill="rgb(208,94,40)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.AsyncEventQueue$$anonfun$org$apache$spark$scheduler$AsyncEventQueue$$dispatch$1.apply (26,898 samples, 9.07%)</title><rect x="1029.5" y="613" width="106.9" height="15.0" fill="rgb(234,140,51)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.sp..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.Dataset.withAction (6,708 samples, 2.26%)</title><rect x="1002.6" y="469" width="26.7" height="15.0" fill="rgb(219,139,20)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer.acquireSharedInterruptibly (6,702 samples, 2.26%)</title><rect x="1002.7" y="101" width="26.6" height="15.0" fill="rgb(229,164,12)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.thread.strategy.ExecuteProduceConsume.produceConsume (26,928 samples, 9.08%)</title><rect x="761.5" y="629" width="107.1" height="15.0" fill="rgb(213,118,54)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_pro..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.SparkSubmit.doRunMain$1 (6,738 samples, 2.27%)</title><rect x="1002.6" y="629" width="26.8" height="15.0" fill="rgb(253,193,24)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.Task.run (20,055 samples, 6.76%)</title><rect x="521.1" y="613" width="79.7" height="15.0" fill="rgb(209,177,2)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>profile.sparkjobs.JobFatso$$anonfun$1.apply (20,055 samples, 6.76%)</title><rect x="521.1" y="389" width="79.7" height="15.0" fill="rgb(211,200,14)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >profile.s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.SelectorImpl.select (26,845 samples, 9.05%)</title><rect x="63.6" y="613" width="106.7" height="15.0" fill="rgb(230,48,23)" rx="2" ry="2" />
+<text text-anchor="" x="66.57" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.Se..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.util.EventLoop$$anon$1.run (6,731 samples, 2.27%)</title><rect x="1163.2" y="709" width="26.8" height="15.0" fill="rgb(245,186,22)" rx="2" ry="2" />
+<text text-anchor="" x="1166.22" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.SparkSubmit.doSubmit (6,746 samples, 2.27%)</title><rect x="1002.6" y="661" width="26.9" height="15.0" fill="rgb(247,53,45)" rx="2" ry="2" />
+<text text-anchor="" x="1005.63" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.StringBuilder.toString (10,875 samples, 3.67%)</title><rect x="557.6" y="277" width="43.2" height="15.0" fill="rgb(240,88,30)" rx="2" ry="2" />
+<text text-anchor="" x="560.58" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.park (6,702 samples, 2.26%)</title><rect x="1002.7" y="53" width="26.6" height="15.0" fill="rgb(221,118,3)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="63.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.KQueueArrayWrapper.kevent0 (26,843 samples, 9.05%)</title><rect x="63.6" y="549" width="106.7" height="15.0" fill="rgb(223,127,30)" rx="2" ry="2" />
+<text text-anchor="" x="66.58" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.KQ..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.AsyncEventQueue$$anon$1.run (26,898 samples, 9.07%)</title><rect x="1029.5" y="709" width="106.9" height="15.0" fill="rgb(209,188,23)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.sp..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDDOperationScope$.withScope (6,702 samples, 2.26%)</title><rect x="1002.7" y="293" width="26.6" height="15.0" fill="rgb(211,183,22)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.ref.Reference$ReferenceHandler.run (6,749 samples, 2.27%)</title><rect x="922.2" y="709" width="26.9" height="15.0" fill="rgb(231,228,23)" rx="2" ry="2" />
+<text text-anchor="" x="925.25" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.park (6,729 samples, 2.27%)</title><rect x="1163.2" y="645" width="26.8" height="15.0" fill="rgb(246,70,35)" rx="2" ry="2" />
+<text text-anchor="" x="1166.22" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.park (26,888 samples, 9.06%)</title><rect x="1029.5" y="549" width="106.9" height="15.0" fill="rgb(237,125,5)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.SparkPlan$$anonfun$2.apply (20,055 samples, 6.76%)</title><rect x="521.1" y="485" width="79.7" height="15.0" fill="rgb(216,155,23)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.TimerThread.run (6,731 samples, 2.27%)</title><rect x="949.1" y="709" width="26.8" height="15.0" fill="rgb(209,38,53)" rx="2" ry="2" />
+<text text-anchor="" x="952.09" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.executor.Executor.org$apache$spark$executor$Executor$$updateDependencies (42 samples, 0.01%)</title><rect x="520.9" y="645" width="0.2" height="15.0" fill="rgb(228,159,22)" rx="2" ry="2" />
+<text text-anchor="" x="523.90" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.reflect.DelegatingMethodAccessorImpl.invoke (6,738 samples, 2.27%)</title><rect x="1002.6" y="565" width="26.8" height="15.0" fill="rgb(220,53,14)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.thread.strategy.ExecuteProduceConsume.executeProduceConsume (26,928 samples, 9.08%)</title><rect x="761.5" y="613" width="107.1" height="15.0" fill="rgb(227,219,0)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_pro..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (6,729 samples, 2.27%)</title><rect x="1163.2" y="629" width="26.8" height="15.0" fill="rgb(254,229,31)" rx="2" ry="2" />
+<text text-anchor="" x="1166.22" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.SparkContext.runJob (6,702 samples, 2.26%)</title><rect x="1002.7" y="213" width="26.6" height="15.0" fill="rgb(237,95,50)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.executor.Executor$TaskRunner$$anonfun$10.apply (20,055 samples, 6.76%)</title><rect x="521.1" y="629" width="79.7" height="15.0" fill="rgb(220,86,20)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io.netty.channel.nio.NioEventLoop.select (26,846 samples, 9.05%)</title><rect x="63.6" y="645" width="106.7" height="15.0" fill="rgb(238,224,18)" rx="2" ry="2" />
+<text text-anchor="" x="66.57" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >io.netty.chan..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.ref.ReferenceQueue.remove (6,721 samples, 2.27%)</title><rect x="975.9" y="645" width="26.7" height="15.0" fill="rgb(226,132,29)" rx="2" ry="2" />
+<text text-anchor="" x="978.89" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>scala.concurrent.impl.Promise$DefaultPromise.tryAwait (6,702 samples, 2.26%)</title><rect x="1002.7" y="117" width="26.6" height="15.0" fill="rgb(254,84,45)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io.netty.channel.nio.SelectedSelectionKeySetSelector.select (26,845 samples, 9.05%)</title><rect x="63.6" y="629" width="106.7" height="15.0" fill="rgb(209,37,21)" rx="2" ry="2" />
+<text text-anchor="" x="66.57" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >io.netty.chan..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated (6,705 samples, 2.26%)</title><rect x="1002.7" y="437" width="26.6" height="15.0" fill="rgb(215,16,37)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.SparkContext.runJob (6,702 samples, 2.26%)</title><rect x="1002.7" y="245" width="26.6" height="15.0" fill="rgb(234,209,44)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.util.ThreadUtils$.awaitReady (6,702 samples, 2.26%)</title><rect x="1002.7" y="165" width="26.6" height="15.0" fill="rgb(239,146,14)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>profile.sparkjobs.JobFatso.main (6,738 samples, 2.27%)</title><rect x="1002.6" y="517" width="26.8" height="15.0" fill="rgb(215,130,12)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >p..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.ServerSocketChannelImpl.accept (6,732 samples, 2.27%)</title><rect x="868.6" y="629" width="26.8" height="15.0" fill="rgb(238,4,13)" rx="2" ry="2" />
+<text text-anchor="" x="871.63" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.server.AbstractConnector$Acceptor.run (6,732 samples, 2.27%)</title><rect x="868.6" y="661" width="26.8" height="15.0" fill="rgb(212,5,23)" rx="2" ry="2" />
+<text text-anchor="" x="871.63" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDD.withScope (6,702 samples, 2.26%)</title><rect x="1002.7" y="309" width="26.6" height="15.0" fill="rgb(219,130,51)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await (6,729 samples, 2.27%)</title><rect x="1163.2" y="661" width="26.8" height="15.0" fill="rgb(232,77,23)" rx="2" ry="2" />
+<text text-anchor="" x="1166.22" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rpc.netty.Dispatcher$MessageLoop.run (20,208 samples, 6.81%)</title><rect x="600.8" y="661" width="80.4" height="15.0" fill="rgb(234,21,19)" rx="2" ry="2" />
+<text text-anchor="" x="603.83" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.ThreadPoolExecutor.runWorker (128,435 samples, 43.29%)</title><rect x="170.4" y="677" width="510.8" height="15.0" fill="rgb(236,149,43)" rx="2" ry="2" />
+<text text-anchor="" x="173.39" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.concurrent.ThreadPoolExecutor.runWorker</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.wait (6,745 samples, 2.27%)</title><rect x="922.3" y="677" width="26.8" height="15.0" fill="rgb(238,197,48)" rx="2" ry="2" />
+<text text-anchor="" x="925.25" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.Arrays.copyOf (38 samples, 0.01%)</title><rect x="557.4" y="229" width="0.2" height="15.0" fill="rgb(226,117,6)" rx="2" ry="2" />
+<text text-anchor="" x="560.43" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.TimerThread.mainLoop (6,731 samples, 2.27%)</title><rect x="949.1" y="693" width="26.8" height="15.0" fill="rgb(249,19,0)" rx="2" ry="2" />
+<text text-anchor="" x="952.09" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.ContextCleaner.org$apache$spark$ContextCleaner$$keepCleaning (6,729 samples, 2.27%)</title><rect x="975.9" y="693" width="26.7" height="15.0" fill="rgb(238,23,41)" rx="2" ry="2" />
+<text text-anchor="" x="978.87" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.SelectorImpl.select (26,928 samples, 9.08%)</title><rect x="761.5" y="549" width="107.1" height="15.0" fill="rgb(207,154,37)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.Se..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.AbstractStringBuilder.append (38 samples, 0.01%)</title><rect x="557.4" y="261" width="0.2" height="15.0" fill="rgb(213,81,45)" rx="2" ry="2" />
+<text text-anchor="" x="560.43" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.Arrays.copyOfRange (10,270 samples, 3.46%)</title><rect x="560.0" y="245" width="40.8" height="15.0" fill="rgb(214,138,20)" rx="2" ry="2" />
+<text text-anchor="" x="562.99" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >jav..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.AsyncEventQueue$$anonfun$org$apache$spark$scheduler$AsyncEventQueue$$dispatch$1.apply$mcJ$sp (26,898 samples, 9.07%)</title><rect x="1029.5" y="597" width="106.9" height="15.0" fill="rgb(227,109,8)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.sp..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>profile.sparkjobs.JobFatso$.main (6,737 samples, 2.27%)</title><rect x="1002.6" y="501" width="26.8" height="15.0" fill="rgb(209,59,38)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >p..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.ContextCleaner$$anonfun$org$apache$spark$ContextCleaner$$keepCleaning$1.apply$mcV$sp (6,729 samples, 2.27%)</title><rect x="975.9" y="661" width="26.7" height="15.0" fill="rgb(248,127,17)" rx="2" ry="2" />
+<text text-anchor="" x="978.87" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.SelectorImpl.lockAndDoSelect (26,928 samples, 9.08%)</title><rect x="761.5" y="533" width="107.1" height="15.0" fill="rgb(250,147,48)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.Se..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer.parkAndCheckInterrupt (6,702 samples, 2.26%)</title><rect x="1002.7" y="69" width="26.6" height="15.0" fill="rgb(209,27,35)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="79.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.ref.ReferenceQueue.remove (6,734 samples, 2.27%)</title><rect x="1136.4" y="677" width="26.8" height="15.0" fill="rgb(208,127,19)" rx="2" ry="2" />
+<text text-anchor="" x="1139.44" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.WholeStageCodegenExec$$anonfun$11$$anon$1.hasNext (20,055 samples, 6.76%)</title><rect x="521.1" y="469" width="79.7" height="15.0" fill="rgb(213,4,18)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.io.ManagedSelector$SelectorProducer.select (26,928 samples, 9.08%)</title><rect x="761.5" y="581" width="107.1" height="15.0" fill="rgb(212,210,29)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_pro..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.storage.BlockManager$RemoteBlockDownloadFileManager$$anon$2.run (6,734 samples, 2.27%)</title><rect x="1136.4" y="709" width="26.8" height="15.0" fill="rgb(211,79,35)" rx="2" ry="2" />
+<text text-anchor="" x="1139.44" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>profile.sparkjobs.Helper$.fatFunctionInner (11,343 samples, 3.82%)</title><rect x="555.7" y="309" width="45.1" height="15.0" fill="rgb(242,86,20)" rx="2" ry="2" />
+<text text-anchor="" x="558.72" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >prof..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.SparkSubmit.submit (6,743 samples, 2.27%)</title><rect x="1002.6" y="645" width="26.9" height="15.0" fill="rgb(223,205,18)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.SparkContext.runJob (6,702 samples, 2.26%)</title><rect x="1002.7" y="229" width="26.6" height="15.0" fill="rgb(223,183,44)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.LinkedBlockingQueue.take (53,872 samples, 18.16%)</title><rect x="306.6" y="645" width="214.3" height="15.0" fill="rgb(227,48,4)" rx="2" ry="2" />
+<text text-anchor="" x="309.64" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.concurrent.LinkedB..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await (20,205 samples, 6.81%)</title><rect x="600.8" y="629" width="80.4" height="15.0" fill="rgb(248,185,43)" rx="2" ry="2" />
+<text text-anchor="" x="603.83" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.KQueueArrayWrapper.poll (26,928 samples, 9.08%)</title><rect x="761.5" y="501" width="107.1" height="15.0" fill="rgb(211,62,38)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.KQ..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.reflect.NativeMethodAccessorImpl.invoke0 (6,738 samples, 2.27%)</title><rect x="1002.6" y="533" width="26.8" height="15.0" fill="rgb(205,131,30)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDD$$anonfun$mapPartitionsInternal$1$$anonfun$apply$24.apply (20,055 samples, 6.76%)</title><rect x="521.1" y="533" width="79.7" height="15.0" fill="rgb(229,68,18)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.wait (6,731 samples, 2.27%)</title><rect x="949.1" y="661" width="26.8" height="15.0" fill="rgb(250,118,17)" rx="2" ry="2" />
+<text text-anchor="" x="952.09" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.wait (6,721 samples, 2.27%)</title><rect x="975.9" y="629" width="26.7" height="15.0" fill="rgb(217,128,24)" rx="2" ry="2" />
+<text text-anchor="" x="978.89" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDD$$anonfun$mapPartitionsInternal$1$$anonfun$apply$24.apply (20,055 samples, 6.76%)</title><rect x="521.1" y="517" width="79.7" height="15.0" fill="rgb(230,213,42)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await (53,872 samples, 18.16%)</title><rect x="306.6" y="629" width="214.3" height="15.0" fill="rgb(210,197,50)" rx="2" ry="2" />
+<text text-anchor="" x="309.64" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.concurrent.locks.A..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.toString (420 samples, 0.14%)</title><rect x="555.7" y="293" width="1.7" height="15.0" fill="rgb(210,207,18)" rx="2" ry="2" />
+<text text-anchor="" x="558.75" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.parkNanos (20,193 samples, 6.81%)</title><rect x="681.2" y="613" width="80.3" height="15.0" fill="rgb(254,106,20)" rx="2" ry="2" />
+<text text-anchor="" x="684.21" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.SparkContext.runJob (6,702 samples, 2.26%)</title><rect x="1002.7" y="197" width="26.6" height="15.0" fill="rgb(208,142,12)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.parkNanos (26,912 samples, 9.07%)</title><rect x="197.2" y="597" width="107.0" height="15.0" fill="rgb(242,123,4)" rx="2" ry="2" />
+<text text-anchor="" x="200.20" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.catalyst.expressions.GeneratedClass$GeneratedIteratorForCodegenStage1.deserializetoobject_doConsume_0$ (20,055 samples, 6.76%)</title><rect x="521.1" y="421" width="79.7" height="15.0" fill="rgb(205,222,43)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>scala.collection.immutable.Range.foreach$mVc$sp (20,055 samples, 6.76%)</title><rect x="521.1" y="341" width="79.7" height="15.0" fill="rgb(245,47,43)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >scala.col..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.KQueueArrayWrapper.kevent0 (26,928 samples, 9.08%)</title><rect x="761.5" y="485" width="107.1" height="15.0" fill="rgb(209,210,29)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.KQ..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.park (6,731 samples, 2.27%)</title><rect x="170.4" y="613" width="26.8" height="15.0" fill="rgb(221,0,10)" rx="2" ry="2" />
+<text text-anchor="" x="173.43" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.SynchronousQueue$TransferStack.transfer (604 samples, 0.20%)</title><rect x="304.2" y="629" width="2.4" height="15.0" fill="rgb(241,17,50)" rx="2" ry="2" />
+<text text-anchor="" x="307.24" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.MapOutputTrackerMaster$MessageLoop.run (53,872 samples, 18.16%)</title><rect x="306.6" y="661" width="214.3" height="15.0" fill="rgb(218,143,2)" rx="2" ry="2" />
+<text text-anchor="" x="309.64" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.spark.MapOutputTr..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.SparkSubmit$$anon$2.doSubmit (6,746 samples, 2.27%)</title><rect x="1002.6" y="677" width="26.9" height="15.0" fill="rgb(218,12,12)" rx="2" ry="2" />
+<text text-anchor="" x="1005.63" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>scala.concurrent.impl.Promise$DefaultPromise.ready (6,702 samples, 2.26%)</title><rect x="1002.7" y="149" width="26.6" height="15.0" fill="rgb(208,44,46)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.thread.strategy.ExecuteProduceConsume.execute (26,928 samples, 9.08%)</title><rect x="761.5" y="645" width="107.1" height="15.0" fill="rgb(242,46,2)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_pro..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.SelectorImpl.select (26,928 samples, 9.08%)</title><rect x="761.5" y="565" width="107.1" height="15.0" fill="rgb(216,3,27)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.Se..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.SparkPlan$$anonfun$2.apply (20,055 samples, 6.76%)</title><rect x="521.1" y="501" width="79.7" height="15.0" fill="rgb(211,217,33)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>scala.util.DynamicVariable.withValue (26,898 samples, 9.07%)</title><rect x="1029.5" y="645" width="106.9" height="15.0" fill="rgb(216,120,10)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >scala.util.Dy..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.JavaMainApplication.start (6,738 samples, 2.27%)</title><rect x="1002.6" y="597" width="26.8" height="15.0" fill="rgb(223,40,52)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.ThreadPoolExecutor.getTask (34,247 samples, 11.54%)</title><rect x="170.4" y="661" width="136.2" height="15.0" fill="rgb(229,119,50)" rx="2" ry="2" />
+<text text-anchor="" x="173.43" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.concurr..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.wait (6,731 samples, 2.27%)</title><rect x="949.1" y="677" width="26.8" height="15.0" fill="rgb(225,22,38)" rx="2" ry="2" />
+<text text-anchor="" x="952.09" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.wait (6,745 samples, 2.27%)</title><rect x="895.4" y="661" width="26.8" height="15.0" fill="rgb(231,219,41)" rx="2" ry="2" />
+<text text-anchor="" x="898.42" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.LinkedBlockingDeque.take (6,729 samples, 2.27%)</title><rect x="1163.2" y="693" width="26.8" height="15.0" fill="rgb(252,160,9)" rx="2" ry="2" />
+<text text-anchor="" x="1166.22" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>profile.sparkjobs.JobFatso$$anonfun$fatFunctionOuter$1.apply$mcVI$sp (11,343 samples, 3.82%)</title><rect x="555.7" y="325" width="45.1" height="15.0" fill="rgb(233,44,3)" rx="2" ry="2" />
+<text text-anchor="" x="558.72" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >prof..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.LinkedBlockingDeque.takeFirst (6,729 samples, 2.27%)</title><rect x="1163.2" y="677" width="26.8" height="15.0" fill="rgb(237,159,44)" rx="2" ry="2" />
+<text text-anchor="" x="1166.22" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await (6,731 samples, 2.27%)</title><rect x="170.4" y="629" width="26.8" height="15.0" fill="rgb(220,198,5)" rx="2" ry="2" />
+<text text-anchor="" x="173.43" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.park (53,872 samples, 18.16%)</title><rect x="306.6" y="613" width="214.3" height="15.0" fill="rgb(247,170,32)" rx="2" ry="2" />
+<text text-anchor="" x="309.64" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.concurrent.locks.L..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.wait (6,734 samples, 2.27%)</title><rect x="1136.4" y="661" width="26.8" height="15.0" fill="rgb(207,30,2)" rx="2" ry="2" />
+<text text-anchor="" x="1139.44" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.AsyncEventQueue$$anon$1$$anonfun$run$1.apply$mcV$sp (26,898 samples, 9.07%)</title><rect x="1029.5" y="677" width="106.9" height="15.0" fill="rgb(244,115,19)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.sp..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.KQueueSelectorImpl.doSelect (26,845 samples, 9.05%)</title><rect x="63.6" y="581" width="106.7" height="15.0" fill="rgb(239,155,48)" rx="2" ry="2" />
+<text text-anchor="" x="66.57" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.KQ..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take (26,912 samples, 9.07%)</title><rect x="197.2" y="629" width="107.0" height="15.0" fill="rgb(209,23,12)" rx="2" ry="2" />
+<text text-anchor="" x="200.20" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.SQLExecution$$anonfun$withNewExecutionId$1.apply (6,705 samples, 2.26%)</title><rect x="1002.7" y="421" width="26.6" height="15.0" fill="rgb(225,40,18)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.ref.Reference.tryHandlePending (6,748 samples, 2.27%)</title><rect x="922.3" y="693" width="26.8" height="15.0" fill="rgb(225,199,29)" rx="2" ry="2" />
+<text text-anchor="" x="925.25" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId (6,705 samples, 2.26%)</title><rect x="1002.7" y="453" width="26.6" height="15.0" fill="rgb(230,144,28)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.AsyncEventQueue$$anonfun$org$apache$spark$scheduler$AsyncEventQueue$$dispatch$1.apply (26,898 samples, 9.07%)</title><rect x="1029.5" y="629" width="106.9" height="15.0" fill="rgb(227,87,48)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.sp..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.MapPartitionsRDD.compute (20,055 samples, 6.76%)</title><rect x="521.1" y="549" width="79.7" height="15.0" fill="rgb(237,77,54)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.String.&lt;init&gt; (10,270 samples, 3.46%)</title><rect x="560.0" y="261" width="40.8" height="15.0" fill="rgb(212,73,3)" rx="2" ry="2" />
+<text text-anchor="" x="562.99" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >jav..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.util.Utils$.tryOrStopSparkContext (6,729 samples, 2.27%)</title><rect x="975.9" y="677" width="26.7" height="15.0" fill="rgb(249,136,43)" rx="2" ry="2" />
+<text text-anchor="" x="978.87" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.DAGScheduler.runJob (6,702 samples, 2.26%)</title><rect x="1002.7" y="181" width="26.6" height="15.0" fill="rgb(228,208,25)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.KQueueArrayWrapper.poll (26,843 samples, 9.05%)</title><rect x="63.6" y="565" width="106.7" height="15.0" fill="rgb(208,142,50)" rx="2" ry="2" />
+<text text-anchor="" x="66.58" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.KQ..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.executor.Executor$TaskRunner.run (20,097 samples, 6.77%)</title><rect x="520.9" y="661" width="79.9" height="15.0" fill="rgb(223,140,44)" rx="2" ry="2" />
+<text text-anchor="" x="523.90" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.BufferedRowIterator.hasNext (20,055 samples, 6.76%)</title><rect x="521.1" y="453" width="79.7" height="15.0" fill="rgb(218,80,24)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.Dataset$$anonfun$53.apply (6,705 samples, 2.26%)</title><rect x="1002.7" y="405" width="26.6" height="15.0" fill="rgb(242,161,11)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.SparkSubmit$.main (6,746 samples, 2.27%)</title><rect x="1002.6" y="693" width="26.9" height="15.0" fill="rgb(223,48,5)" rx="2" ry="2" />
+<text text-anchor="" x="1005.63" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (6,702 samples, 2.26%)</title><rect x="1002.7" y="37" width="26.6" height="15.0" fill="rgb(211,121,46)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="47.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.SparkSubmit.main (6,746 samples, 2.27%)</title><rect x="1002.6" y="709" width="26.9" height="15.0" fill="rgb(250,31,48)" rx="2" ry="2" />
+<text text-anchor="" x="1005.63" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (604 samples, 0.20%)</title><rect x="304.2" y="581" width="2.4" height="15.0" fill="rgb(216,41,27)" rx="2" ry="2" />
+<text text-anchor="" x="307.24" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (6,731 samples, 2.27%)</title><rect x="170.4" y="597" width="26.8" height="15.0" fill="rgb(228,196,21)" rx="2" ry="2" />
+<text text-anchor="" x="173.43" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.reflect.NativeMethodAccessorImpl.invoke (6,738 samples, 2.27%)</title><rect x="1002.6" y="549" width="26.8" height="15.0" fill="rgb(208,54,47)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDD$$anonfun$collect$1.apply (6,702 samples, 2.26%)</title><rect x="1002.7" y="261" width="26.6" height="15.0" fill="rgb(215,16,28)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos (20,193 samples, 6.81%)</title><rect x="681.2" y="629" width="80.3" height="15.0" fill="rgb(217,213,22)" rx="2" ry="2" />
+<text text-anchor="" x="684.21" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.LinkedBlockingQueue.take (6,731 samples, 2.27%)</title><rect x="170.4" y="645" width="26.8" height="15.0" fill="rgb(221,141,14)" rx="2" ry="2" />
+<text text-anchor="" x="173.43" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.ServerSocketChannelImpl.accept0 (6,732 samples, 2.27%)</title><rect x="868.6" y="597" width="26.8" height="15.0" fill="rgb(216,12,13)" rx="2" ry="2" />
+<text text-anchor="" x="871.63" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.io.ManagedSelector.run (26,928 samples, 9.08%)</title><rect x="761.5" y="661" width="107.1" height="15.0" fill="rgb(222,94,48)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_pro..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io.netty.channel.nio.NioEventLoop.run (26,877 samples, 9.06%)</title><rect x="63.5" y="661" width="106.9" height="15.0" fill="rgb(232,109,49)" rx="2" ry="2" />
+<text text-anchor="" x="66.50" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >io.netty.chan..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.scheduler.ResultTask.runTask (20,055 samples, 6.76%)</title><rect x="521.1" y="597" width="79.7" height="15.0" fill="rgb(212,96,48)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take (26,912 samples, 9.07%)</title><rect x="197.2" y="645" width="107.0" height="15.0" fill="rgb(215,187,25)" rx="2" ry="2" />
+<text text-anchor="" x="200.20" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.parkNanos (604 samples, 0.20%)</title><rect x="304.2" y="597" width="2.4" height="15.0" fill="rgb(251,85,10)" rx="2" ry="2" />
+<text text-anchor="" x="307.24" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDD.iterator (20,055 samples, 6.76%)</title><rect x="521.1" y="581" width="79.7" height="15.0" fill="rgb(207,195,41)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.catalyst.expressions.GeneratedClass$GeneratedIteratorForCodegenStage1.mapelements_doConsume_0$ (20,055 samples, 6.76%)</title><rect x="521.1" y="405" width="79.7" height="15.0" fill="rgb(226,46,47)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.ServerSocketChannelImpl.accept (6,732 samples, 2.27%)</title><rect x="868.6" y="613" width="26.8" height="15.0" fill="rgb(238,45,16)" rx="2" ry="2" />
+<text text-anchor="" x="871.63" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io.netty.util.concurrent.DefaultThreadFactory$DefaultRunnableDecorator.run (33,577 samples, 11.32%)</title><rect x="36.9" y="693" width="133.5" height="15.0" fill="rgb(212,11,41)" rx="2" ry="2" />
+<text text-anchor="" x="39.85" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >io.netty.util.co..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.SynchronousQueue.poll (604 samples, 0.20%)</title><rect x="304.2" y="645" width="2.4" height="15.0" fill="rgb(232,156,42)" rx="2" ry="2" />
+<text text-anchor="" x="307.24" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Object.wait (6,745 samples, 2.27%)</title><rect x="922.3" y="661" width="26.8" height="15.0" fill="rgb(238,208,20)" rx="2" ry="2" />
+<text text-anchor="" x="925.25" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>profile.sparkjobs.JobFatso$$anonfun$1.apply (20,055 samples, 6.76%)</title><rect x="521.1" y="373" width="79.7" height="15.0" fill="rgb(214,198,16)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >profile.s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.ref.Finalizer$FinalizerThread.run (6,749 samples, 2.27%)</title><rect x="895.4" y="709" width="26.8" height="15.0" fill="rgb(214,48,28)" rx="2" ry="2" />
+<text text-anchor="" x="898.41" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (26,912 samples, 9.07%)</title><rect x="197.2" y="581" width="107.0" height="15.0" fill="rgb(249,171,28)" rx="2" ry="2" />
+<text text-anchor="" x="200.20" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.misc.Unsa..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.KQueueSelectorImpl.doSelect (26,928 samples, 9.08%)</title><rect x="761.5" y="517" width="107.1" height="15.0" fill="rgb(211,40,0)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.KQ..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.ThreadPoolExecutor$Worker.run (128,435 samples, 43.29%)</title><rect x="170.4" y="693" width="510.8" height="15.0" fill="rgb(205,88,11)" rx="2" ry="2" />
+<text text-anchor="" x="173.39" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.concurrent.ThreadPoolExecutor$Worker.run</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.ContextCleaner$$anon$1.run (6,729 samples, 2.27%)</title><rect x="975.9" y="709" width="26.7" height="15.0" fill="rgb(245,172,27)" rx="2" ry="2" />
+<text text-anchor="" x="978.87" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.thread.QueuedThreadPool.access$800 (20,196 samples, 6.81%)</title><rect x="681.2" y="677" width="80.3" height="15.0" fill="rgb(213,69,12)" rx="2" ry="2" />
+<text text-anchor="" x="684.21" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.util.Utils$.tryWithSafeFinally (20,055 samples, 6.76%)</title><rect x="521.1" y="645" width="79.7" height="15.0" fill="rgb(213,220,52)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>scala.collection.mutable.StringBuilder.toString (10,875 samples, 3.67%)</title><rect x="557.6" y="293" width="43.2" height="15.0" fill="rgb(220,52,48)" rx="2" ry="2" />
+<text text-anchor="" x="560.58" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >scal..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (20,205 samples, 6.81%)</title><rect x="600.8" y="597" width="80.4" height="15.0" fill="rgb(235,79,32)" rx="2" ry="2" />
+<text text-anchor="" x="603.83" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.misc...</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDDOperationScope$.withScope (6,702 samples, 2.26%)</title><rect x="1002.7" y="277" width="26.6" height="15.0" fill="rgb(253,130,16)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.reflect.Method.invoke (6,738 samples, 2.27%)</title><rect x="1002.6" y="581" width="26.8" height="15.0" fill="rgb(224,129,1)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.AbstractStringBuilder.ensureCapacityInternal (38 samples, 0.01%)</title><rect x="557.4" y="245" width="0.2" height="15.0" fill="rgb(241,91,48)" rx="2" ry="2" />
+<text text-anchor="" x="560.43" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.storage.BlockManager$RemoteBlockDownloadFileManager.org$apache$spark$storage$BlockManager$RemoteBlockDownloadFileManager$$keepCleaning (6,734 samples, 2.27%)</title><rect x="1136.4" y="693" width="26.8" height="15.0" fill="rgb(234,206,27)" rx="2" ry="2" />
+<text text-anchor="" x="1139.44" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.Dataset.org$apache$spark$sql$Dataset$$collectFromPlan (6,705 samples, 2.26%)</title><rect x="1002.7" y="357" width="26.6" height="15.0" fill="rgb(209,99,10)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.rdd.RDD.computeOrReadCheckpoint (20,055 samples, 6.76%)</title><rect x="521.1" y="565" width="79.7" height="15.0" fill="rgb(250,29,31)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apach..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Thread.run (215,869 samples, 72.76%)</title><rect x="36.8" y="709" width="858.6" height="15.0" fill="rgb(250,99,32)" rx="2" ry="2" />
+<text text-anchor="" x="39.85" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.lang.Thread.run</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.io.ManagedSelector$SelectorProducer.produce (26,928 samples, 9.08%)</title><rect x="761.5" y="597" width="107.1" height="15.0" fill="rgb(210,94,39)" rx="2" ry="2" />
+<text text-anchor="" x="764.53" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_pro..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>profile.sparkjobs.JobFatso$.fatFunctionOuter (20,055 samples, 6.76%)</title><rect x="521.1" y="357" width="79.7" height="15.0" fill="rgb(211,3,14)" rx="2" ry="2" />
+<text text-anchor="" x="524.07" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >profile.s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.Dataset.collect (6,708 samples, 2.26%)</title><rect x="1002.6" y="485" width="26.7" height="15.0" fill="rgb(247,205,19)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.SynchronousQueue$TransferStack.awaitFulfill (604 samples, 0.20%)</title><rect x="304.2" y="613" width="2.4" height="15.0" fill="rgb(219,142,21)" rx="2" ry="2" />
+<text text-anchor="" x="307.24" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.nio.ch.SelectorImpl.lockAndDoSelect (26,845 samples, 9.05%)</title><rect x="63.6" y="597" width="106.7" height="15.0" fill="rgb(213,155,7)" rx="2" ry="2" />
+<text text-anchor="" x="66.57" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.nio.ch.Se..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.sql.execution.SparkPlan.executeCollect (6,705 samples, 2.26%)</title><rect x="1002.7" y="341" width="26.6" height="15.0" fill="rgb(231,154,47)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io.netty.util.concurrent.SingleThreadEventExecutor$5.run (26,877 samples, 9.06%)</title><rect x="63.5" y="677" width="106.9" height="15.0" fill="rgb(216,165,15)" rx="2" ry="2" />
+<text text-anchor="" x="66.50" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >io.netty.util..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.Thread.sleep (6,700 samples, 2.26%)</title><rect x="36.9" y="661" width="26.6" height="15.0" fill="rgb(251,118,24)" rx="2" ry="2" />
+<text text-anchor="" x="39.85" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (26,888 samples, 9.06%)</title><rect x="1029.5" y="533" width="106.9" height="15.0" fill="rgb(231,108,54)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.misc.Unsa..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await (26,888 samples, 9.06%)</title><rect x="1029.5" y="565" width="106.9" height="15.0" fill="rgb(217,191,43)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util.con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.AbstractQueuedSynchronizer.doAcquireSharedInterruptibly (6,702 samples, 2.26%)</title><rect x="1002.7" y="85" width="26.6" height="15.0" fill="rgb(210,126,18)" rx="2" ry="2" />
+<text text-anchor="" x="1005.66" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.deploy.SparkSubmit.org$apache$spark$deploy$SparkSubmit$$runMain (6,738 samples, 2.27%)</title><rect x="1002.6" y="613" width="26.8" height="15.0" fill="rgb(209,3,29)" rx="2" ry="2" />
+<text text-anchor="" x="1005.64" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >o..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.ref.ReferenceQueue.remove (6,749 samples, 2.27%)</title><rect x="895.4" y="677" width="26.8" height="15.0" fill="rgb(236,137,24)" rx="2" ry="2" />
+<text text-anchor="" x="898.41" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>scala.collection.mutable.StringBuilder.append (41 samples, 0.01%)</title><rect x="557.4" y="293" width="0.2" height="15.0" fill="rgb(231,38,30)" rx="2" ry="2" />
+<text text-anchor="" x="560.42" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>io.netty.util.ThreadDeathWatcher$Watcher.run (6,700 samples, 2.26%)</title><rect x="36.9" y="677" width="26.6" height="15.0" fill="rgb(216,93,36)" rx="2" ry="2" />
+<text text-anchor="" x="39.85" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >i..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.StringBuilder.append (41 samples, 0.01%)</title><rect x="557.4" y="277" width="0.2" height="15.0" fill="rgb(215,37,12)" rx="2" ry="2" />
+<text text-anchor="" x="560.42" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sun.misc.Unsafe.park (53,872 samples, 18.16%)</title><rect x="306.6" y="597" width="214.3" height="15.0" fill="rgb(213,142,1)" rx="2" ry="2" />
+<text text-anchor="" x="309.64" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >sun.misc.Unsafe.park</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.LinkedBlockingQueue.take (20,205 samples, 6.81%)</title><rect x="600.8" y="645" width="80.4" height="15.0" fill="rgb(205,43,12)" rx="2" ry="2" />
+<text text-anchor="" x="603.83" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>all (296,689 samples, 100%)</title><rect x="10.0" y="725" width="1180.0" height="15.0" fill="rgb(243,22,12)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="735.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.util.concurrent.locks.LockSupport.park (20,205 samples, 6.81%)</title><rect x="600.8" y="613" width="80.4" height="15.0" fill="rgb(231,105,18)" rx="2" ry="2" />
+<text text-anchor="" x="603.83" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >java.util..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.thread.QueuedThreadPool$2.run (53,856 samples, 18.15%)</title><rect x="681.2" y="693" width="214.2" height="15.0" fill="rgb(226,188,17)" rx="2" ry="2" />
+<text text-anchor="" x="684.21" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark_project.jetty.util..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>java.lang.ref.ReferenceQueue.remove (6,749 samples, 2.27%)</title><rect x="895.4" y="693" width="26.8" height="15.0" fill="rgb(247,41,40)" rx="2" ry="2" />
+<text text-anchor="" x="898.41" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >j..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.apache.spark.util.Utils$.tryOrStopSparkContext (26,898 samples, 9.07%)</title><rect x="1029.5" y="693" width="106.9" height="15.0" fill="rgb(224,1,49)" rx="2" ry="2" />
+<text text-anchor="" x="1032.46" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.apache.sp..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>org.spark_project.jetty.util.BlockingArrayQueue.poll (20,196 samples, 6.81%)</title><rect x="681.2" y="645" width="80.3" height="15.0" fill="rgb(212,73,45)" rx="2" ry="2" />
+<text text-anchor="" x="684.21" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >org.spark..</text>
+</g>
+</svg>
