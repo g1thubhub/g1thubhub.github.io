@@ -389,6 +389,7 @@ In real-world BigData application that have slacking phases, we can expect the t
 ## Source Code & Links & Goodies
 Quite a lot of things were discussed and code exists that implements every idea presented:
 
+
 ### Riddle source code
 The Spark source code for the riddles is located in [this](https://github.com/g1thubhub/philstopwatch) repository:
 * [Scala Straggler](https://github.com/g1thubhub/philstopwatch/blob/master/src/main/scala/profile/sparkjobs/JobStraggler.scala)
