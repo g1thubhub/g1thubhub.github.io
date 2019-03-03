@@ -2,6 +2,8 @@
 layout: default
 ---
 
+Made in London by writingphil@gmail.com
+
 # Phil's Data Structure Zoo
 
 Solving a problem programatically often involves grouping data items together so they can be conveniently operated on or copied as a single unit -- the items are collected in a **data structure**. Many different data structures have been designed over the past decades, some store **individual** items like phone numbers, others store more complex objects like name/phone number **pairs**. Each has strengths and weaknesses and is more or less suitable for a specific use case. In this article, I will describe and attempt to classify some of the most popular data structures and their actual implementations on three different abstaction levels starting from a Platonic ideal and ending with actual code that is benchmarked:  
