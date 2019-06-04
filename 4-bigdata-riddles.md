@@ -4,7 +4,7 @@ layout: default
 
 Made in London by writingphil@gmail.com
 
-# 4 BigData Riddles: The Straggler, the Slacker, the Fatso, and the Heckler
+# 4 Big Data Riddles: The Straggler, the Slacker, the Fatso, and the Heckler
 <p></p>
 This article discusses four bottlenecks in BigData applications and introduces a number of tools, some of which are new, for identifying and removing them. These bottlenecks could occur in any framework but a particular emphasis will be given to Apache Spark and PySpark. 
 
