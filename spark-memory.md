@@ -24,7 +24,6 @@ I played around with the Python script that created the original input file [her
 The first and last change directly contradict the original hypothesis and the other changes make the memory mystery even bigger. 
 
 ## Memory compartments explained
-<br>
 Visualizations will be useful for illuminating this mystery, the following pictures show Spark's memory compartments when running [ProcessFile.scala](https://github.com/g1thubhub/bdrecipes/blob/master/src/main/java/spark/fractions/ProcessFile.scala) on my MacBook:
 ![Diagram1](images/Diagram1.jpg)
 According to the system spec, my MacBook has four physical cores that amount to eight vCores. Since the application was initializd with `.master("local[3]")`, three out of those eight virtual cores will participate in the processing. As reflected in the picture above, the JVM heap size is limited to 900MB and default values for both `spark.memory.` fraction properties are used. The sizes for the two most important memory compartments from a developer perspective can be calculated with these formulas:
@@ -36,6 +35,9 @@ According to the system spec, my MacBook has four physical cores that amount to 
 <br>
 *Execution Memory* is used for objects and computations that are typically short-lived like the intermediate buffers of shuffle operation whereas *Storage Memory* is used for long-lived data that might be reused in downstream computations. However, there is no static boundary but an eviction policy -- if there is no cached data, then Execution Memory will claim all the space of Storage Memory and vice versa. If there is stored data and a computation is performed, cached data will be evicted as needed up until the Storage Memory amount which denotes a minimum that 
 will not be spilled to disk. The reverse does not hold true though, execution is never evicted by storage.
+
+<br>
+This dynamic memory management strategy has been in use since Spark 1.6, previous releases drew a static boundary between Storage and Execution Memory that had to be specified before run time via the configuration properties `spark.shuffle.memoryFraction`, `spark.storage.memoryFraction`, and `spark.storage.unrollFraction`. These have become obsolete and using them will not have an effect unless the user explicitly requests the old static strategy by setting `spark.memory.useLegacyMode` to _true_. 
 
 <br>
 The example application does not cache any data so Execution Memory will eat up all of Storage Memory but this is still not enough:
@@ -60,7 +62,7 @@ Now there is only one active task that can use all Execution Memory and each rec
 ## Going distributed: Spark inside YARN containers
 Things become even more complicated in a distributed environment. Suppose we run on AWS/EMR and use a cluster of _m4.2xlarge_ instance types, then every node has eight vCPUs (four physical CPUs) and 32GB memory according to [https://aws.amazon.com/ec2/instance-types/](https://aws.amazon.com/ec2/instance-types/). YARN will be responsible for resource allocations and each Spark executor will run inside a YARN container.  Additional memory properties have to be taken into acccount since YARN needs some resources for itself:
 
-![DiagramYarn](images/DiagramYarn.jpg)
+![DiagramYARN](images/DiagramYARN.jpg)
 Out of the 32GB node memory in total of an _m4.2xlarge_ instance, 24GB can be used for containers/Spark executors by default (property _yarn.nodemanager.resource.memory-mb_) and the largest container/executor could use all of this memory (property _yarn.scheduler.maximum-allocation-mb_), these values are taken from [https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-hadoop-task-config.html](https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-hadoop-task-config.html). Each YARN container needs some overhead in addition to the memory reserved for a Spark executor that runs inside it, the default value of this _spark.yarn.executor.memoryOverhead_ property is 384MB or 0.1 * Container Memory, whichever value is bigger; the memory available to the Spark executor would be 0.9 * Container Memory in this scenario.
 
 <br>
@@ -69,6 +71,16 @@ How is this _Container Memory_ determined? It is actually not a property that is
 = 24GB / 2 = 12GB
 
 Therefore each Spark executor has 0.9 * 12GB available (equivalent to the _JVM Heap_ sizes in the images above) and the various memory compartments inside it could now be calculated based on the formulas introduced in the first part of this article. The virtual core count of two was just chosen for this example, it wouldn't make much sense in real life since four vcores are idle under this configuration. The best setup for _m4.2xlarge_ instance types might be to just use one large Spark executor with seven cores as one core should always be reserved for the Operating System and other background processes on the node.
+
+## Spark and Standalone Mode
+Things become a bit easier again when Spark is deployed without YARN in _StandAlone Mode_ as is the case with services like Azure Databricks:
+![DiagramDatabricks](images/DiagramDatabricks.jpg)
+
+Only one Spark executor will run per node and the cores will be fully used. In this case, the available memory can be calculated for instances like [_DS4 v2_](https://azure.microsoft.com/en-gb/pricing/details/virtual-machines/linux/) with the following formulas:
+<br>
+**Container Memory** = (Instance Memory * 0.97  -  4800)
+
+_spark.executor.memory_ = (0.8 * Container Memory)
 
 ## Memory and partitions in real life workloads
 Determining the "largest" record that might lead to an OOM error is much more complicated than in the previous scenario for a typical workload: The line lengths of all input files used (like _generated_file_1_gb.txt_) were the same so there was no "smallest" or "largest" record. Finding the maximum would be much harder if not practically impossible when transformations and aggregations occur. One approach might consist in searching the input or intermediate data that was persisted to stable storage for the "largest" record and creating an object of the right type (the schema used during a bottleneck like a shuffle) from it. The memory size of this object can then be directly determined by passing a reference to `SizeEstimator.estimate`, a version of this function that can be used outside of Spark can be found [here](https://github.com/g1thubhub/datastructurezoo/blob/master/src/main/scala/memmeasure/spark/JvmSizeEstimator.scala).
