@@ -62,7 +62,7 @@ Now there is only one active task that can use all Execution Memory and each rec
 ## Going distributed: Spark inside YARN containers
 Things become even more complicated in a distributed environment. Suppose we run on AWS/EMR and use a cluster of _m4.2xlarge_ instance types, then every node has eight vCPUs (four physical CPUs) and 32GB memory according to [https://aws.amazon.com/ec2/instance-types/](https://aws.amazon.com/ec2/instance-types/). YARN will be responsible for resource allocations and each Spark executor will run inside a YARN container.  Additional memory properties have to be taken into acccount since YARN needs some resources for itself:
 
-![DiagramYARN](images/DiagramYARN.jpg)
+![DiagramY](images/DiagramY.jpg)
 Out of the 32GB node memory in total of an _m4.2xlarge_ instance, 24GB can be used for containers/Spark executors by default (property _yarn.nodemanager.resource.memory-mb_) and the largest container/executor could use all of this memory (property _yarn.scheduler.maximum-allocation-mb_), these values are taken from [https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-hadoop-task-config.html](https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-hadoop-task-config.html). Each YARN container needs some overhead in addition to the memory reserved for a Spark executor that runs inside it, the default value of this _spark.yarn.executor.memoryOverhead_ property is 384MB or 0.1 * Container Memory, whichever value is bigger; the memory available to the Spark executor would be 0.9 * Container Memory in this scenario.
 
 <br>
