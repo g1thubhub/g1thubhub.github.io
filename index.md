@@ -4,6 +4,11 @@ layout: default
 Most recent articles:
 
 <br>
+Coming up soon: An article series about Apache Spark with Python & Scala
+
+<br>
+[A deep dive into the Catalyst Optimizer](https://g1thubhub.github.io/catalyst.html)
+
 <br>
 [Spark memory compartments and formulas](https://g1thubhub.github.io/spark-memory.html)
 
