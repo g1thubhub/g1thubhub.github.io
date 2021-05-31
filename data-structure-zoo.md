@@ -2,7 +2,7 @@
 layout: default
 ---
 
-Made in London by writingphil@gmail.com
+Made in London by [me](https://www.linkedin.com/in/phil-phil-439513182/)
 
 # Phil's Data Structure Zoo
 

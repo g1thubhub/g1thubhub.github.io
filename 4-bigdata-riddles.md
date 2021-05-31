@@ -2,7 +2,7 @@
 layout: default
 ---
 
-Made in London by writingphil@gmail.com
+Made in London by [me](https://www.linkedin.com/in/phil-phil-439513182/)
 
 # 4 Big Data Riddles: The Straggler, the Slacker, the Fatso, and the Heckler
 <p></p>

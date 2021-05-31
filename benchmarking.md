@@ -2,6 +2,8 @@
 layout: default
 ---
 
+Made in London by [me](https://www.linkedin.com/in/phil-phil-439513182/)
+
 # Benchmarks, Spark and Graal
 <p></p>
 A very important question is how long something takes and the answer to that is fairly straightforward in normal life: Check the current time, then perform the unit of work that should be measured, then check the time again. The end time minus the start time would equal the amount of time that the task took, the **elapsed time** or wallclock time. The programmatic version of this simple measuring technique could look like
