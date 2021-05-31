@@ -6,7 +6,7 @@ Made in London by writingphil@gmail.com
 
 First published [here](https://www.unraveldata.com/resources/catalyst-analyst-a-deep-dive-into-sparks-optimizer/)
 <br>
-# A deep dive into the Catalyst Optimizer
+# §9 A deep dive into the Catalyst Optimizer
 
 The Catalyst optimizer is a crucial component of Apache Spark. It optimizes structural queries – expressed in SQL, or via the DataFrame/Dataset APIs – which can reduce the runtime of programs and save costs. Developers often treat Catalyst as a black box that just magically works. Moreover, only a handful of resources are available that explain its inner workings in an accessible manner. 
 
