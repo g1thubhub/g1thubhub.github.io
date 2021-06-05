@@ -4,12 +4,26 @@ layout: default
 Most recent articles:
 
 <br>
-Coming up soon: An article series about Apache Spark with Python & Scala
+## Apache Spark in Python and Scala (work in progress)
 
 <br>
-[A deep dive into the Catalyst Optimizer](https://g1thubhub.github.io/catalyst.html)
+[§ 0.1 Preamble: **The _bdrecipes_ codebase**]() <br>
+[§ 0.2 Preamble: **Setting up Apache Spark**]() <br>
+
 
 <br>
+<br>
+[§9 **A deep dive into the Catalyst Optimizer**](https://g1thubhub.github.io/catalyst.html)
+
+<br>
+[§10.1 **Query Plan Hermeneutics**]() <br>
+[§10.2 **Query Plan Exercises**]()
+
+
+<br>
+<br>
+<br>
+## Miscellaneous
 [Spark memory compartments and formulas](https://g1thubhub.github.io/spark-memory.html)
 
 <br>
