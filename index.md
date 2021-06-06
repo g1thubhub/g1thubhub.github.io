@@ -7,8 +7,8 @@ Most recent articles:
 ## Apache Spark in Python and Scala (work in progress)
 
 <br>
-[§ 0.1 Preamble: **The _bdrecipes_ codebase**]() <br>
-[§ 0.2 Preamble: **Setting up Apache Spark**]() <br>
+[§ 0.1 Preamble: **The _bdrecipes_ codebase**](https://g1thubhub.github.io/intro-code.html) <br>
+[§ 0.2 Preamble: **Setting up Apache Spark**](https://g1thubhub.github.io/intro-spark.html) <br>
 
 
 <br>
@@ -16,8 +16,8 @@ Most recent articles:
 [§9 **A deep dive into the Catalyst Optimizer**](https://g1thubhub.github.io/catalyst.html)
 
 <br>
-[§10.1 **Query Plan Hermeneutics**]() <br>
-[§10.2 **Query Plan Exercises**]()
+[§10.1 **Query Plan Hermeneutics**](https://g1thubhub.github.io/hermeneutics.html) <br>
+[§10.2 **Query Plan Exercises**](https://g1thubhub.github.io/hermeneutics2.html)
 
 
 <br>

@@ -2,8 +2,8 @@
 layout: default
 ---
 
-Made in London by [me](https://www.linkedin.com/in/phil-phil-439513182/)
-
+Made in London by [me](https://www.linkedin.com/in/phil-phil-439513182/) <br>
+Back to the [index](https://g1thubhub.github.io/index.html) <br>
 First published [here](https://www.unraveldata.com/resources/catalyst-analyst-a-deep-dive-into-sparks-optimizer/)
 <br>
 # §9 A deep dive into the Catalyst Optimizer
@@ -203,4 +203,4 @@ When query stages are created from the plan, four adaptive physical rules are [a
 The last paragraph has mentioned four adaptive optimizations which are implemented in one logical rule (`DemoteBroadcastHashJoin`) and three physical ones (`CoalesceShufflePartitions`, `OptimizeSkewedJoin`, and `OptimizeLocalShuffleReader`). All four make use of a special [statistics](https://github.com/apache/spark/blob/v3.0.1/core/src/main/scala/org/apache/spark/MapOutputStatistics.scala) class that holds the output size of each map output partition. The statistics mentioned in the _Quantitative Optimization_ section above do get refreshed, but will not be leveraged by the standard logical rule batches, as a custom logical optimizer is used by AQE.
 
 <br>
-This article has described Spark’s Catalyst optimizer in detail. Developers who are unhappy with its default behavior can [add](https://issues.apache.org/jira/browse/SPARK-18127) their own logical optimizations and strategies or [exclude](https://github.com/apache/spark/blob/2b147c4cd50da32fe2b4167f97c8142102a0510d/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L184) specific logical optimizations. However, it can become complicated and time-consuming to devise customized logic for query patterns and other factors, such as the choice of machine types, may also have a significant impact on the performance of applications.
+This article has described Spark’s Catalyst optimizer in detail. Developers who are unhappy with its default behavior can [add](https://issues.apache.org/jira/browse/SPARK-18127) their own logical optimizations and strategies or [exclude](https://github.com/apache/spark/blob/2b147c4cd50da32fe2b4167f97c8142102a0510d/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L184) specific logical optimizations. However, it can become complicated and time-consuming to devise customized logic for query patterns and other factors, such as the choice of machine types, may also have a significant impact on the performance of applications. The [next article](https://g1thubhub.github.io/hermeneutics.html) will focus on practical aspects of the Catalyst plans.
