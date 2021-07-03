@@ -131,7 +131,7 @@ $ docker build -t my-app:dev .
  => => naming to docker.io/library/my-app:dev
 ```
 
-This terminal output looks promising, nine layers were created that correspond to the nine instructions in the [Dockerfile](). Our new custom image `my-app:dev` can be tested by executing a dockerized version of the obligatory _HelloWorld_ example: The two source files are [HelloWorld.scala](https://github.com/g1thubhub/bdrecipes/blob/master/tutorials/module1/scala/HelloWorld.scala) and [helloworld.py](https://github.com/g1thubhub/bdrecipes/blob/master/tutorials/module1/python/helloworld.py), the local layout of the relevant directories and files for this _HelloWorld_ example is
+This terminal output looks promising, nine layers were created that correspond to the nine instructions in the [Dockerfile](https://g1thubhub.github.io/docker#the-dockerfile). Our new custom image `my-app:dev` can be tested by executing a dockerized version of the obligatory _HelloWorld_ example: The two source files are [HelloWorld.scala](https://github.com/g1thubhub/bdrecipes/blob/master/tutorials/module1/scala/HelloWorld.scala) and [helloworld.py](https://github.com/g1thubhub/bdrecipes/blob/master/tutorials/module1/python/helloworld.py), the local layout of the relevant directories and files for this _HelloWorld_ example is
 
 ```bash
 bdrecipes/
