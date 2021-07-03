@@ -9,7 +9,9 @@ Most recent articles:
 <br>
 [§ 0.1 Preamble: **The _bdrecipes_ codebase**](https://g1thubhub.github.io/intro-code.html) <br>
 [§ 0.2 Preamble: **Setting up Apache Spark**](https://g1thubhub.github.io/intro-spark.html) <br>
+<br>
 
+[§1 **Apache Spark on Docker**](https://g1thubhub.github.io/docker.html) <br>
 
 <br>
 <br>
